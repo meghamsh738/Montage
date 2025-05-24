@@ -1,0 +1,66 @@
+
+from ij import IJ
+from ij.measure import Calibration
+from java.awt import Color, Font
+
+# 1. Keep a reference to the ORIGINAL
+orig       = IJ.getImage()
+orig_title = orig.getTitle()
+
+# 2. Duplicate it (so we can close the copy later)
+dup        = orig.duplicate()
+dup_title  = "Copy-" + orig_title
+dup.setTitle(dup_title)
+dup.show()
+
+# 3. Apply calibration to the COPY (0.2 µm/px here, unit forced to "um")
+cal = dup.getCalibration()
+cal.pixelWidth  = 0.2
+cal.pixelHeight = 0.2
+cal.setUnit("um")
+dup.setCalibration(cal)
+
+# 4. Split & re-merge channels → RGB composite
+IJ.run(dup, "Split Channels", "")
+IJ.run("Merge Channels...",
+       "c1=[C1-{0}] c2=[C2-{0}] c3=[C3-{0}] create keep".format(dup_title))
+
+# 5. Flatten and stack the three planes
+merged = IJ.getImage()  # the newly merged RGB
+IJ.run(merged, "Flatten", "")
+IJ.run(merged, "Images to Stack", "name=Stack title=[] use")
+stack = IJ.getImage()
+
+# 6. Draw a filled scale bar (50 µm×5 px) on every slice
+for i in range(1, stack.getNSlices()+1):
+    stack.setSlice(i)
+    IJ.run(stack, "Scale Bar...",
+           "width=50 height=5 font=18 color=White location=[Lower Right] bold")
+
+# 7. Make the 5×1 montage (no labels)
+IJ.run(stack, "Make Montage...", "columns=5 rows=1 scale=1 border=3")
+montage = IJ.getImage()
+
+# 8. Extend canvas downward + draw ORIGINAL title beneath
+w, h = montage.getWidth(), montage.getHeight()
+pad  = 50  # px padding
+IJ.setBackgroundColor(255,255,255)
+IJ.run(montage, "Canvas Size...",
+       "width={0} height={1} position=Top-Center background=White".format(w, h+pad))
+proc = montage.getProcessor()
+proc.setFont(Font("SansSerif", Font.BOLD, 70))
+proc.setColor(Color.BLACK)
+fm = proc.getFontMetrics()
+x  = (w - fm.stringWidth(orig_title)) / 2
+y  = h + (pad + fm.getAscent()) / 2
+proc.drawString(orig_title, x, y)
+montage.updateAndDraw()
+
+# 9. Close the intermediate windows (Stack + duplicate)
+stack.close()
+IJ.selectWindow(dup_title)
+IJ.run("Close")
+
+# 10. Bring the ORIGINAL back to front
+orig.show()
+IJ.selectWindow(orig_title)
